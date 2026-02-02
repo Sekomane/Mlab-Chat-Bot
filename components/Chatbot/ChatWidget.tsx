@@ -1,9 +1,7 @@
-
 import React, { useState, useEffect, useRef } from 'react';
-import { ChatRole, Message, EscalationStatus } from '../../types';
+import { ChatRole, Message } from '../../types';
 import { CATEGORIES } from '../../constants';
 import { llmProvider } from '../../services/llmProvider';
-import { firebaseService } from '../../services/firebaseService';
 import EscalationForm from './EscalationForm';
 
 const ChatWidget: React.FC = () => {
@@ -44,17 +42,6 @@ const ChatWidget: React.FC = () => {
     addMessage(ChatRole.USER, text);
     setInputValue('');
 
-    const sensitiveKeywords = ['bank', 'account', 'credit card', 'password', 'pin', 'id number', 'salary', 'personal information'];
-    const isSensitive = sensitiveKeywords.some(keyword => text.toLowerCase().includes(keyword));
-
-    if (isSensitive) {
-      // Week 1: Immediate response, no delay
-      addMessage(ChatRole.BOT, "I don't have specific information in my records regarding this. I recommend escalating this query to a human agent");
-      setShowEscalation(true);
-      return;
-    }
-
-    // Week 1: Immediate mock responses (no delays, no typing indicator)
     const response = await llmProvider.generateResponse(text);
     addMessage(ChatRole.BOT, response.text);
   };
@@ -77,7 +64,6 @@ const ChatWidget: React.FC = () => {
 
   return (
     <div className="fixed bottom-6 right-6 z-[9999] flex flex-col items-end">
-      {/* Floating Toggle Button (As shown in image) */}
       {!isOpen && (
         <button 
           onClick={() => setIsOpen(true)}
@@ -87,13 +73,11 @@ const ChatWidget: React.FC = () => {
         </button>
       )}
 
-      {/* Main Chat Window - Week 1: No transitions, instant show/hide */}
       <div className={`
         absolute bottom-0 right-0 w-[360px] h-[680px] bg-[#4A6D76] rounded-[30px] shadow-2xl flex flex-col overflow-hidden
         ${isOpen ? '' : 'hidden'}
       `}>
         
-        {/* Header (Pill container style) */}
         <div className="px-6 py-8 flex items-center justify-between">
           <div className="mx-auto flex items-center gap-2 bg-white rounded-full px-5 py-2 shadow-lg relative">
             <div className="w-5 h-5 bg-[#A5CD39] rounded-full flex items-center justify-center text-[10px] text-white">
@@ -107,7 +91,6 @@ const ChatWidget: React.FC = () => {
           </button>
         </div>
 
-        {/* Message Area */}
         <div className="flex-1 flex flex-col relative overflow-hidden">
           <div className="flex items-center justify-center my-2">
             <div className="h-[1px] bg-white/20 w-16"></div>
@@ -169,12 +152,10 @@ const ChatWidget: React.FC = () => {
             )}
           </div>
 
-          {/* Branding (as shown in image) */}
           <div className="mb-2 w-full text-center shrink-0">
             <span className="text-[9px] text-white/30 font-medium">powered by <span className="text-red-500/50 font-bold">MLAB AI SUPPORT</span></span>
           </div>
 
-          {/* Pill-shaped Input Area */}
           {!conversationEnded && !showEscalation && (
             <div className="px-4 pb-6 shrink-0 border-t border-white/10 pt-4">
               <div className="h-12 bg-[#D1D5DB] rounded-full flex items-center px-4 shadow-inner">
@@ -199,7 +180,6 @@ const ChatWidget: React.FC = () => {
             </div>
           )}
 
-          {/* Escalation View (When triggered) - Week 1: No animations */}
           {showEscalation && (
             <div className="absolute inset-0 z-50 bg-[#A5CD39] flex flex-col p-6">
                <div className="flex justify-between items-center mb-6">
