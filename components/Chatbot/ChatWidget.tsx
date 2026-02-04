@@ -1,8 +1,20 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ChatRole, Message } from '../../types';
 import { CATEGORIES } from '../../constants';
-import { llmProvider } from '../../services/llmProvider';
 import EscalationForm from './EscalationForm';
+
+const ESCALATION_LINK_TEXT = 'Speak to an agent';
+
+async function sendToChatApi(prompt: string): Promise<{ text: string }> {
+  const res = await fetch('/api/chat', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ prompt })
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.text || 'Request failed');
+  return data;
+}
 
 const ChatWidget: React.FC = () => {
   const [isOpen, setIsOpen] = useState(false);
@@ -10,9 +22,16 @@ const ChatWidget: React.FC = () => {
     {
       id: '1',
       role: ChatRole.BOT,
-      content: 'Good afternoon and welcome to mLab AI Support. How can I assist you today? You can choose a category below or type your question.',
+      content: 'Good afternoon and welcome to mLab AI Support. This chatbot helps you get information about mLab programmes, locations, applications, and events. You can choose a category above or type your question.',
       timestamp: new Date(),
       type: 'options'
+    },
+    {
+      id: '2',
+      role: ChatRole.BOT,
+      content: 'Would you like to speak to an agent?',
+      timestamp: new Date(),
+      type: 'escalation'
     }
   ]);
   const [inputValue, setInputValue] = useState('');
@@ -36,14 +55,21 @@ const ChatWidget: React.FC = () => {
     }]);
   };
 
+  const openEscalationOverlay = () => setShowEscalation(true);
+  const closeEscalationOverlay = () => setShowEscalation(false);
+
   const handleSend = async (text: string = inputValue) => {
     if (!text.trim()) return;
-    
+
     addMessage(ChatRole.USER, text);
     setInputValue('');
 
-    const response = await llmProvider.generateResponse(text);
-    addMessage(ChatRole.BOT, response.text);
+    try {
+      const response = await sendToChatApi(text);
+      addMessage(ChatRole.BOT, response.text);
+    } catch (err) {
+      addMessage(ChatRole.BOT, err instanceof Error ? err.message : 'Error connecting to AI service. Please try again.');
+    }
   };
 
   const handleCategoryClick = (cat: string) => {
@@ -54,18 +80,33 @@ const ChatWidget: React.FC = () => {
     setMessages([{
       id: Date.now().toString(),
       role: ChatRole.BOT,
-      content: 'Good afternoon and welcome to mLab AI Support. How can I assist you today?',
+      content: 'Good afternoon and welcome to mLab AI Support. This chatbot helps you get information about mLab programmes, locations, applications, and events. You can choose a category above or type your question.',
       timestamp: new Date(),
       type: 'options'
+    }, {
+      id: (Date.now() + 1).toString(),
+      role: ChatRole.BOT,
+      content: 'Would you like to speak to an agent?',
+      timestamp: new Date(),
+      type: 'escalation'
     }]);
     setConversationEnded(false);
+    setShowEscalation(false);
+  };
+
+  const handleEscalationSubmit = () => {
+    setShowEscalation(false);
+    setConversationEnded(true);
+  };
+
+  const handleEscalationCancel = () => {
     setShowEscalation(false);
   };
 
   return (
     <div className="fixed bottom-6 right-6 z-[9999] flex flex-col items-end">
       {!isOpen && (
-        <button 
+        <button
           onClick={() => setIsOpen(true)}
           className="w-16 h-16 bg-[#008151] rounded-full flex items-center justify-center shadow-2xl text-white"
         >
@@ -77,18 +118,32 @@ const ChatWidget: React.FC = () => {
         absolute bottom-0 right-0 w-[360px] h-[680px] bg-[#4A6D76] rounded-[30px] shadow-2xl flex flex-col overflow-hidden
         ${isOpen ? '' : 'hidden'}
       `}>
-        
-        <div className="px-6 py-8 flex items-center justify-between">
-          <div className="mx-auto flex items-center gap-2 bg-white rounded-full px-5 py-2 shadow-lg relative">
+
+        <div className="px-4 py-4 flex items-center justify-between shrink-0">
+          <div className="flex items-center gap-2 bg-white rounded-full px-4 py-2 shadow-lg relative">
             <div className="w-5 h-5 bg-[#A5CD39] rounded-full flex items-center justify-center text-[10px] text-white">
               <i className="fas fa-comment"></i>
             </div>
             <span className="text-xs font-bold text-gray-800">mLab AI Support</span>
             <div className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full border-2 border-white"></div>
           </div>
-          <button onClick={() => setIsOpen(false)} className="absolute right-6 text-gray-800/80">
-            <i className="fas fa-times text-2xl"></i>
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={openEscalationOverlay}
+              className="min-w-[44px] min-h-[44px] flex items-center justify-center text-gray-800/90 hover:text-[#A5CD39] transition-colors rounded-full"
+              title="Speak to an agent"
+              aria-label="Speak to an agent"
+            >
+              <i className="fas fa-headset text-xl"></i>
+            </button>
+            <button
+              onClick={() => setIsOpen(false)}
+              className="min-w-[44px] min-h-[44px] flex items-center justify-center text-gray-800/80 hover:opacity-80"
+              aria-label="Close chat"
+            >
+              <i className="fas fa-times text-2xl"></i>
+            </button>
+          </div>
         </div>
 
         <div className="flex-1 flex flex-col relative overflow-hidden">
@@ -98,9 +153,26 @@ const ChatWidget: React.FC = () => {
             <div className="h-[1px] bg-white/20 w-16"></div>
           </div>
 
-          <div 
-            ref={scrollRef} 
-            className="flex-1 overflow-y-auto px-4 chat-scrollbar space-y-6 pb-20 pt-4"
+          {!conversationEnded && !showEscalation && (
+            <div className="px-3 pb-3 shrink-0">
+              <div className="flex flex-wrap gap-2 justify-center">
+                {CATEGORIES.map(cat => (
+                  <button
+                    key={cat}
+                    onClick={() => handleCategoryClick(cat)}
+                    className="bg-[#003829] text-[#A5CD39] text-[9px] font-black uppercase py-2 px-3 rounded-full flex items-center justify-center gap-1.5 shadow-md hover:bg-[#004d3d] transition-colors"
+                  >
+                    <i className={`fas fa-${cat === 'Programmes' ? 'graduation-cap' : cat === 'Locations' ? 'map-marker-alt' : cat === 'Applications' ? 'file-alt' : 'calendar-alt'}`}></i>
+                    {cat}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div
+            ref={scrollRef}
+            className="flex-1 overflow-y-auto px-4 chat-scrollbar space-y-6 pb-20 pt-2"
           >
             {messages.map((msg) => (
               <div key={msg.id} className={`flex flex-col ${msg.role === ChatRole.USER ? 'items-end' : 'items-start'}`}>
@@ -111,43 +183,40 @@ const ChatWidget: React.FC = () => {
                     </div>
                   )}
                   <div className={`px-4 py-3 rounded-2xl text-[13px] shadow-md leading-relaxed relative ${
-                    msg.role === ChatRole.USER 
-                      ? 'bg-[#A5CD39] text-[#1F2937] rounded-tr-none' 
+                    msg.role === ChatRole.USER
+                      ? 'bg-[#A5CD39] text-[#1F2937] rounded-tr-none'
                       : 'bg-white text-[#1F2937] rounded-tl-none'
                   }`}>
                     {msg.content}
-                    <div className={`text-[8px] mt-1 font-bold opacity-60 text-right`}>
+                    {msg.type === 'escalation' && (
+                      <div className="mt-3">
+                        <button
+                          type="button"
+                          onClick={openEscalationOverlay}
+                          className="text-[#073B4C] font-bold underline hover:no-underline text-left"
+                        >
+                          {ESCALATION_LINK_TEXT}
+                        </button>
+                      </div>
+                    )}
+                    <div className="text-[8px] mt-1 font-bold opacity-60 text-right">
                       {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </div>
                   </div>
                 </div>
-
-                {msg.type === 'options' && !conversationEnded && (
-                  <div className="grid grid-cols-2 gap-2 mt-4 ml-10 w-[calc(100%-40px)] pr-4">
-                    {CATEGORIES.map(cat => (
-                      <button 
-                        key={cat} 
-                        onClick={() => handleCategoryClick(cat)}
-                        className="bg-[#003829] text-[#A5CD39] text-[9px] font-black uppercase py-2 rounded-full flex items-center justify-center gap-2"
-                      >
-                        <i className={`fas fa-${cat === 'Programmes' ? 'graduation-cap' : cat === 'Locations' ? 'map-marker-alt' : cat === 'Applications' ? 'file-alt' : 'calendar-alt'}`}></i>
-                        {cat}
-                      </button>
-                    ))}
-                  </div>
-                )}
               </div>
             ))}
 
             {conversationEnded && (
               <div className="bg-white rounded-xl p-8 mt-6 mx-2 shadow-xl text-center flex flex-col items-center">
-                 <h3 className="text-2xl font-black text-gray-800 mb-4">Conversation ended</h3>
-                 <button 
+                <h3 className="text-2xl font-black text-gray-800 mb-4">Conversation ended</h3>
+                <p className="text-sm text-gray-600 mb-4">Thank you. An agent will be in touch.</p>
+                <button
                   onClick={startNewChat}
                   className="text-blue-500 font-bold hover:underline"
-                 >
-                   Start a new chat
-                 </button>
+                >
+                  Start a new chat
+                </button>
               </div>
             )}
           </div>
@@ -159,18 +228,19 @@ const ChatWidget: React.FC = () => {
           {!conversationEnded && !showEscalation && (
             <div className="px-4 pb-6 shrink-0 border-t border-white/10 pt-4">
               <div className="h-12 bg-[#D1D5DB] rounded-full flex items-center px-4 shadow-inner">
-                <button className="text-gray-600">
+                <button type="button" className="text-gray-600">
                   <i className="fas fa-plus text-xl"></i>
                 </button>
-                <input 
-                  type="text" 
-                  placeholder="Write a message..." 
+                <input
+                  type="text"
+                  placeholder="Write a message..."
                   value={inputValue}
-                  onChange={(e) => setInputValue(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleSend()}
+                  onChange={e => setInputValue(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && handleSend()}
                   className="flex-1 bg-transparent px-3 outline-none text-sm font-medium text-gray-700 placeholder-gray-500"
                 />
-                <button 
+                <button
+                  type="button"
                   onClick={() => handleSend()}
                   className="w-8 h-8 bg-[#A5CD39] rounded-full flex items-center justify-center text-white"
                 >
@@ -179,28 +249,33 @@ const ChatWidget: React.FC = () => {
               </div>
             </div>
           )}
-
-          {showEscalation && (
-            <div className="absolute inset-0 z-50 bg-[#A5CD39] flex flex-col p-6">
-               <div className="flex justify-between items-center mb-6">
-                  <h2 className="text-xl font-black text-gray-800">Support Required</h2>
-                  <button onClick={() => setShowEscalation(false)} className="p-2 bg-black/10 rounded-full">
-                    <i className="fas fa-times text-xl"></i>
-                  </button>
-               </div>
-               <div className="flex-1 overflow-y-auto chat-scrollbar pr-2">
-                 <EscalationForm 
-                   onSubmit={() => {
-                     setShowEscalation(false);
-                     setConversationEnded(true);
-                   }}
-                   onCancel={() => setShowEscalation(false)}
-                 />
-               </div>
-            </div>
-          )}
         </div>
       </div>
+
+      {/* Escalation overlay: centered popup with backdrop + pop-open effect, scrollbar hidden */}
+      {showEscalation && (
+        <div
+          className="fixed inset-0 z-[10000] flex items-center justify-center p-4"
+          style={{ backgroundColor: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(4px)' }}
+          aria-modal="true"
+          role="dialog"
+          aria-labelledby="escalation-title"
+        >
+          <div className="relative max-h-[85vh] overflow-y-auto scrollbar-hide escalation-pop-open">
+            <button
+              onClick={closeEscalationOverlay}
+              className="absolute top-1 right-1 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-full bg-black/10 hover:bg-black/20 text-gray-800 z-10"
+              aria-label="Close"
+            >
+              <i className="fas fa-times text-lg"></i>
+            </button>
+            <EscalationForm
+              onSubmit={handleEscalationSubmit}
+              onCancel={handleEscalationCancel}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 };
