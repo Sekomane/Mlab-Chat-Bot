@@ -25,6 +25,9 @@ export function apiChatPlugin(): Plugin {
             }
             const env = loadEnv('development', process.cwd(), '');
             const apiKey = (env.GEMINI_API_KEY || env.VITE_GEMINI_API_KEY || '').trim();
+            if (process.env.NODE_ENV !== 'production') {
+              console.log('[api/chat] Using API key ending in:', apiKey ? `...${apiKey.slice(-4)}` : '(none)');
+            }
             if (!apiKey) {
               res.statusCode = 500;
               res.setHeader('Content-Type', 'application/json');
